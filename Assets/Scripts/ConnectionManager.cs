@@ -8,7 +8,7 @@ public class ConnectionManager : MonoBehaviour
     // Start is called before the first frame update
     void Start()
     {
-        Connection connection = new Connection();
+        ConnectionSocket connection = new ConnectionSocket();
         connection.StartSever("54321");
     }
 

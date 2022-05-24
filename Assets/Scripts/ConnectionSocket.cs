@@ -38,19 +38,20 @@ namespace ControlWear
                     SocketType.Stream,
                     ProtocolType.Tcp);
                 // IPAddress hostIP = (Dns.GetHostEntry(IPAddress.Any.ToString())).AddressList[0];
-                IPEndPoint ep = new IPEndPoint(IPAddress.Any, int.Parse(_port));
+                IPEndPoint ep = new IPEndPoint(IPAddress.Parse("0.0.0.0"), int.Parse(_port));
                 listenSocket.Bind(ep);
                 listenSocket.Listen(5);
                 var bytes = new byte[2048];
-                string data = null;
+                string data = "";
 
                 while (true)
                 {
-                    Debug.Log("Waiting for connection on " + "127.0.0.1" + ":" + _port + "...");
+                    Debug.Log("Waiting for connection on " + ep + "...");
                     using (Socket client = listenSocket.Accept())
                     {
                         Debug.Log("Connected!");
                         int nbBytes = 0;
+                        data = "";
                         do
                         {
                             nbBytes = client.Receive(bytes, bytes.Length, 0);
