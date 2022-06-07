@@ -13,7 +13,7 @@ namespace ControlWear
     public class ConnectionTcpListener : IListener
     {
         private Thread _listenerThread;
-        private string _port;
+        private readonly string _port;
 
         public ConnectionTcpListener(string port)
         {

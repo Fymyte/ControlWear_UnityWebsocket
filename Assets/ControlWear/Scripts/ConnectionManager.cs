@@ -9,6 +9,7 @@ public class ConnectionManager : MonoBehaviour
     void Start()
     {
         new ConnectionTcpListener("54123").Listen();
+        new ConnectionBluetoothListener().Listen();
     }
 
 }
