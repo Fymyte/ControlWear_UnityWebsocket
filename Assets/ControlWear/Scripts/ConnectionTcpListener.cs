@@ -13,39 +13,59 @@ namespace ControlWear
     public class ConnectionTcpListener : IListener
     {
         private Thread _listenerThread;
+        private bool _isListening;
+        private TcpListener _listener = null;
         private readonly string _port;
 
         public ConnectionTcpListener(string port)
         {
-            this._port = port;
+            _port = port;
+            _isListening = false;
         }
 
         public void Listen()
         {
+            if (_isListening)
+                return;
+
             try
             {
-                _listenerThread = new Thread(new ThreadStart(ListenForIncomingRequests));
-                _listenerThread.IsBackground = true;
+                _listener = new TcpListener(IPAddress.Any, int.Parse(_port));
+                _listener.Start();
+                _isListening = true;
+                Debug.Log("Starting listening for TCP connection");
+            }
+            catch (SocketException e)
+            {
+                Debug.LogError(e.Message);
+                return;
+            }
+            try
+            {
+                _listenerThread = new Thread(ListenForIncomingRequests)
+                {
+                    IsBackground = true
+                };
                 _listenerThread.Start();
             }
             catch (Exception e)
             {
-                Debug.Log(e.ToString());
+                Debug.Log(e.Message);
             }
+
         }
 
         private void ListenForIncomingRequests()
         {
             try
             {
-                var server = new TcpListener(IPAddress.Any, int.Parse(_port));
-                server.Start();
-
                 var msg = new byte[2048];
-
                 while (true)
                 {
-                    using var client = server.AcceptTcpClient();
+                    Debug.Log("Waiting for TCP connection");
+                    using var client = _listener.AcceptTcpClient();
+                    if (!_isListening)
+                        return;
                     var stream = client.GetStream();
                     string data = null;
                     int i;
@@ -54,10 +74,25 @@ namespace ControlWear
                     Debug.Log("Data received: " + data);
                 }
             }
-            catch (Exception e)
+            catch (SocketException e) when (e.SocketErrorCode == SocketError.Interrupted)
             {
-                Debug.Log(e.ToString());
+                Debug.Log("Listening canceled");
+                _isListening = false;
             }
+            // catch (SocketException e)
+            // {
+            //     Debug.LogError(e.Message);
+            // }
+        }
+
+        public void Cancel()
+        {
+            if (!_isListening)
+                return;
+            
+            Debug.Log("TCP listening canceled");
+            _isListening = false;
+            _listener.Stop();
         }
     }
 }

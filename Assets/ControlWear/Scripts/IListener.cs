@@ -6,7 +6,14 @@ namespace com.ohrizon.ControlWear
 {
     public interface IListener
     {
-        // Start listening for incoming connection
+        /// <summary>
+        /// Start listening for incoming connection in a separated thread.
+        /// </summary>
         public void Listen();
+
+        /// <summary>
+        /// Close resources for listening and associated thread.
+        /// </summary>
+        public void Cancel();
     }
 }

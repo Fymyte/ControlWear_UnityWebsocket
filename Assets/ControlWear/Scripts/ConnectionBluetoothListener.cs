@@ -5,6 +5,7 @@ using System.Threading;
 using com.ohrizon.ControlWear;
 using UnityEngine;
 #if ENABLE_WINMD_SUPPORT
+using System.Net.Sockets;
 using Windows.Devices.Bluetooth;
 using Windows.Devices.Bluetooth.Rfcomm;
 using Windows.Networking.Sockets;
@@ -17,21 +18,24 @@ namespace ControlWear
     {
 #if ENABLE_WINMD_SUPPORT
         private static readonly Guid RfcommListenerServiceUuid = Guid.Parse("5ab3b0a3-338b-4b1b-8301-fed74b25d214");
-        private static readonly byte SdpServiceNameAttributeType = (4 << 3) | 5;
-        private static readonly string SdpServiceName = "ControlWear Connection Bluetooth Listener";
-        private static readonly UInt16 SdpServiceNameAttributeId = 0x100;
+        private const byte SdpServiceNameAttributeType = (4 << 3) | 5;
+        private const string SdpServiceName = "ControlWear Connection Bluetooth Listener";
+        private const ushort SdpServiceNameAttributeId = 0x100;
 
         private Thread _listenerThread;
-        private StreamSocket socket;
-        private DataWriter writer;
-        private DataReader reader;
-        private RfcommServiceProvider rfcommProvider;
-        private StreamSocketListener socketListener;
+        private bool _isListening;
+        private StreamSocket _socket;
+        private DataWriter _writer;
+        private DataReader _reader;
+        private RfcommServiceProvider _rfcommProvider;
+        private StreamSocketListener _socketListener;
 #endif
 
         public ConnectionBluetoothListener()
         {
-
+#if ENABLE_WINMD_SUPPORT
+            this._isListening = false;
+#endif
         }
 
         public void Listen()
@@ -39,8 +43,10 @@ namespace ControlWear
 #if ENABLE_WINMD_SUPPORT
             try
             {
-                _listenerThread = new Thread(new ThreadStart(ListenForIncomingRequests));
-                _listenerThread.IsBackground = true;
+                _listenerThread = new Thread(ListenForIncomingRequests)
+                {
+                    IsBackground = true
+                };
                 _listenerThread.Start();
             }
             catch (Exception e)
@@ -51,14 +57,24 @@ namespace ControlWear
             throw new Exception("Bluetooth connectivity isn't supported on this platform");
 #endif
         }
-        
+
+        public void Cancel()
+        {
+#if ENABLE_WINMD_SUPPORT
+            if (_isListening)
+                Disconnect();
+#else
+            throw new Exception("Bluetooth connectivity isn't supported on this platform");
+#endif
+        }
+
 #if ENABLE_WINMD_SUPPORT
         private async void ListenForIncomingRequests()
         {
             Debug.Log("listening for bluetooth connection...");
             try
             {
-                rfcommProvider = await RfcommServiceProvider.CreateAsync(RfcommServiceId.FromUuid(RfcommListenerServiceUuid));
+                _rfcommProvider = await RfcommServiceProvider.CreateAsync(RfcommServiceId.FromUuid(RfcommListenerServiceUuid));
             }
             catch (Exception ex) when ((uint)ex.HResult == 0x800710DF)
             {
@@ -67,19 +83,19 @@ namespace ControlWear
             }
 
             // Create a listener for this service and start listening
-            socketListener = new StreamSocketListener();
-            socketListener.ConnectionReceived += OnConnectionReceived;
-            var rfcomm = rfcommProvider.ServiceId.AsString(); 
+            _socketListener = new StreamSocketListener();
+            _socketListener.ConnectionReceived += OnConnectionReceived;
+            var rfcomm = _rfcommProvider.ServiceId.AsString(); 
 
-            await socketListener.BindServiceNameAsync(rfcommProvider.ServiceId.AsString(),
+            await _socketListener.BindServiceNameAsync(_rfcommProvider.ServiceId.AsString(),
                 SocketProtectionLevel.BluetoothEncryptionAllowNullAuthentication);
 
             // Set the SDP attributes and start Bluetooth advertising
-            InitializeServiceSdpAttributes(rfcommProvider);
+            InitializeServiceSdpAttributes(_rfcommProvider);
 
             try
             {
-                rfcommProvider.StartAdvertising(socketListener, true);
+                _rfcommProvider.StartAdvertising(_socketListener, true);
             }
             catch (Exception e)
             {
@@ -87,10 +103,11 @@ namespace ControlWear
                 Debug.Log(e.Message);
                 return;
             }
-
+            
+            _isListening = true;
         }
         
-        private void InitializeServiceSdpAttributes(RfcommServiceProvider rfcommProvider)
+        private static void InitializeServiceSdpAttributes(RfcommServiceProvider rfcommProvider)
         {
             var sdpWriter = new DataWriter();
 
@@ -112,26 +129,19 @@ namespace ControlWear
             StreamSocketListener sender, StreamSocketListenerConnectionReceivedEventArgs args)
         {
             Debug.Log("Connection received!");
-            socketListener.Dispose();
-            socketListener = null;
+            _rfcommProvider.StopAdvertising();
+            _rfcommProvider = null;
+            _socketListener.Dispose();
+            _socketListener = null;
 
-            try
-            {
-                socket = args.Socket;
-            }
-            catch (Exception e)
-            {
-                Debug.LogError("Failed to retrieve args: " + e.Message);
-                Disconnect();
-                return;
-            }
+            _socket = args.Socket;
 
-            var remoteDevice = await BluetoothDevice.FromHostNameAsync(socket.Information.RemoteHostName);
+            var remoteDevice = await BluetoothDevice.FromHostNameAsync(_socket.Information.RemoteHostName);
 
-            writer = new DataWriter(socket.OutputStream);
-            writer.UnicodeEncoding = UnicodeEncoding.Utf8;
-            reader = new DataReader(socket.InputStream);
-            reader.UnicodeEncoding = UnicodeEncoding.Utf8;
+            _writer = new DataWriter(_socket.OutputStream);
+            _writer.UnicodeEncoding = UnicodeEncoding.Utf8;
+            _reader = new DataReader(_socket.InputStream);
+            _reader.UnicodeEncoding = UnicodeEncoding.Utf8;
             bool remoteDisconnection = false;
 
             Debug.Log("Connected to Client: " + remoteDevice.Name);
@@ -145,7 +155,7 @@ namespace ControlWear
                     // uint i;
                     // while ((i = await reader.LoadAsync(2048)) != 0)
                     //     data += reader.ReadString(i);
-                    uint readLength = await reader.LoadAsync(sizeof(uint));
+                    uint readLength = await _reader.LoadAsync(sizeof(uint));
                     Debug.Log("Loaded " + readLength + "bytes");
                     // Check if the size of the data is expected (otherwise the remote has already terminated the connection)
                     if (readLength < sizeof(uint))
@@ -154,12 +164,12 @@ namespace ControlWear
                         Debug.LogError("Failed to read message length");
                         break;
                     }
-                    uint currentLength = reader.ReadUInt32();
+                    uint currentLength = _reader.ReadUInt32();
                     Debug.Log("message length is " + currentLength + " characters long");
                     Debug.Log("Loading message content");
                     
                     // Load the rest of the message since you already know the length of the data expected.  
-                    readLength = await reader.LoadAsync(currentLength);
+                    readLength = await _reader.LoadAsync(currentLength);
                     
                     // Check if the size of the data is expected (otherwise the remote has already terminated the connection)
                     if (readLength < currentLength)
@@ -168,7 +178,7 @@ namespace ControlWear
                         Debug.LogError("Failed to read message");
                         break;
                     }
-                    string message = reader.ReadString(currentLength);
+                    string message = _reader.ReadString(currentLength);
                     
                     Debug.Log("Received: " + message);
                 }
@@ -177,35 +187,44 @@ namespace ControlWear
                     Debug.LogError(e.Message);
                 }
             }
+            
+            Disconnect();
         }
 
         private void Disconnect()
         {
-            if (rfcommProvider != null)
+            if (_rfcommProvider != null)
             {
-                rfcommProvider.StopAdvertising();
-                rfcommProvider = null;
+                _rfcommProvider.StopAdvertising();
+                _rfcommProvider = null;
             }
 
-            if (socketListener != null)
+            if (_socketListener != null)
             {
-                socketListener.Dispose();
-                socketListener = null;
+                _socketListener.Dispose();
+                _socketListener = null;
             }
 
-            if (writer != null)
+            if (_writer != null)
             {
-                writer.DetachStream();
-                writer = null;
+                _writer.DetachStream();
+                _writer = null;
             }
 
-            if (socket != null)
+            if (_reader != null)
             {
-                socket.Dispose();
-                socket = null;
+                _reader.DetachStream();
+                _reader = null;
             }
 
-            Debug.Log("Diconnected!");
+            if (_socket != null)
+            {
+                _socket.Dispose();
+                _socket = null;
+            }
+
+            Debug.Log("Disconnected!");
+            _isListening = false;
         }
 
 
