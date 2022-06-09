@@ -7,11 +7,14 @@ using System.Text;
 using System.Threading;
 using com.ohrizon.ControlWear;
 using UnityEngine;
+using static UnityEngine.WSA.Application;
 
 namespace ControlWear
 {
     public class ConnectionTcpListener : IListener
     {
+        public event Action<string> MessageReceived;
+        
         private Thread _listenerThread;
         private bool _isListening;
         private TcpListener _listener = null;
@@ -72,6 +75,11 @@ namespace ControlWear
                     while ((i = stream.Read(msg, 0, msg.Length)) != 0)
                         data += Encoding.ASCII.GetString(msg, 0, i);
                     Debug.Log("Data received: " + data);
+
+                    if (MessageReceived != null)
+                    {
+                        InvokeOnAppThread(() => MessageReceived(data), false);
+                    }
                 }
             }
             catch (SocketException e) when (e.SocketErrorCode == SocketError.Interrupted)

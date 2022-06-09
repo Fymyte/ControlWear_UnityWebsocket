@@ -8,24 +8,20 @@ public class ConnectionManager : MonoBehaviour
 {
     private ConnectionTcpListener _tcpListener;
 
-    private int counter = 0;
-
     private ConnectionBluetoothListener _bluetoothListener;
     // Start is called before the first frame update
-    void Start()
+    private void Start()
     {
         _tcpListener = new ConnectionTcpListener("54123");
         _bluetoothListener = new ConnectionBluetoothListener();
+        _tcpListener.MessageReceived += OnMessageReceived;
+        _bluetoothListener.MessageReceived += OnMessageReceived;
         _tcpListener.Listen();
         _bluetoothListener.Listen();
-        counter = 0;
-        // tcpListener.Cancel();
     }
 
-    private void Update()
+    private static void OnMessageReceived(string message)
     {
-        counter += 1;
-        if (counter == 360)
-            _bluetoothListener.Cancel();
+        Debug.Log("Received on main thread'" + message + "'");
     }
 }
