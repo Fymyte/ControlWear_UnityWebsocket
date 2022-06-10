@@ -1,22 +1,17 @@
 using System;
-using System.Collections;
-using System.Collections.Generic;
 using System.Threading;
-using com.ohrizon.ControlWear;
 using UnityEngine;
 using static UnityEngine.WSA.Application;
 #if ENABLE_WINMD_SUPPORT
-using System.Net.Sockets;
 using Windows.Devices.Bluetooth;
 using Windows.Devices.Bluetooth.Rfcomm;
-using Windows.Foundation;
 using Windows.Networking.Sockets;
 using Windows.Storage.Streams;
 #endif
 
-namespace ControlWear
+namespace Ohrizon.ControlWear.Network
 {
-    public class ConnectionBluetoothListener : IListener
+    public class BluetoothListener : IListener
     {
         public event Action<string> MessageReceived;
         
@@ -34,7 +29,7 @@ namespace ControlWear
         private StreamSocketListener _socketListener;
 #endif
 
-        public ConnectionBluetoothListener()
+        public BluetoothListener()
         {
 #if ENABLE_WINMD_SUPPORT
             this._isListening = false;

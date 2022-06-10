@@ -1,9 +1,6 @@
 using System;
-using System.Collections;
-using System.Collections.Generic;
-using UnityEngine;
 
-namespace com.ohrizon.ControlWear
+namespace Ohrizon.ControlWear.Network
 {
     public interface IListener
     {

@@ -1,26 +1,23 @@
 using System;
-using System.Collections;
-using System.Collections.Generic;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
 using System.Threading;
-using com.ohrizon.ControlWear;
 using UnityEngine;
 using static UnityEngine.WSA.Application;
 
-namespace ControlWear
+namespace Ohrizon.ControlWear.Network
 {
-    public class ConnectionTcpListener : IListener
+    public class TcpListener : IListener
     {
         public event Action<string> MessageReceived;
         
         private Thread _listenerThread;
         private bool _isListening;
-        private TcpListener _listener = null;
+        private System.Net.Sockets.TcpListener _listener = null;
         private readonly string _port;
 
-        public ConnectionTcpListener(string port)
+        public TcpListener(string port)
         {
             _port = port;
             _isListening = false;
@@ -33,7 +30,7 @@ namespace ControlWear
 
             try
             {
-                _listener = new TcpListener(IPAddress.Any, int.Parse(_port));
+                _listener = new System.Net.Sockets.TcpListener(IPAddress.Any, int.Parse(_port));
                 _listener.Start();
                 _isListening = true;
                 Debug.Log("Starting listening for TCP connection");
