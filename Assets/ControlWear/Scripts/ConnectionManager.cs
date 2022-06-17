@@ -21,7 +21,7 @@ public class ConnectionManager : MonoBehaviour
         new Gesture(new Point[]
         {
            new Point(30, 20, 1), new Point(200, 20, 1)
-        }),
+        }, "Straight line"),
         new Gesture(new Point[] {
             new Point(177, 92, 1), new Point(177, 2, 1),
             new Point(182, 1, 2), new Point(246, 95, 2),
@@ -43,12 +43,25 @@ public class ConnectionManager : MonoBehaviour
     private BluetoothListener _bluetoothListener;
     private void Start()
     {
-        _tcpListener = new TcpListener("54123");
+        // _tcpListener = new TcpListener("54123");
         _bluetoothListener = new BluetoothListener();
-        _tcpListener.MessageReceived += OnMessageReceived;
+        // _tcpListener.MessageReceived += OnMessageReceived;
         _bluetoothListener.MessageReceived += OnMessageReceived;
-        _tcpListener.Listen();
+        _bluetoothListener.ClientDisconnected += OnClientDisconnected;
+        _bluetoothListener.ClientConnected += OnClientConnected;
+        // _tcpListener.Listen();
         _bluetoothListener.Listen();
+    }
+
+    private void OnClientDisconnected(string device)
+    {
+        Debug.Log($"Client {device} disconnected");
+        _bluetoothListener.Listen();
+    }
+
+    private void OnClientConnected(string device)
+    {
+        Debug.Log($"Client {device} connected");
     }
 
     private static void OnMessageReceived(string message)
@@ -58,7 +71,7 @@ public class ConnectionManager : MonoBehaviour
         Debug.Log($"points: {messages[1].Trim()}");
         JsonUtility.FromJsonOverwrite(messages[1].Trim(), _wrapperPoint);
         Debug.Log($"json: {_wrapperPoint.points}");
-        var s = QRecognizer.Classify(new Gesture(_wrapperPoint.points), _gestures.ToArray());
-        Debug.Log($"Recognized class: {s}");
+        var recognized = QRecognizer.Classify(new Gesture(_wrapperPoint.points), _gestures.ToArray());
+        Debug.Log($"Recognized class: {recognized.Item1.Name} ({recognized.Item2})");
     }
 }

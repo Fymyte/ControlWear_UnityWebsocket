@@ -11,7 +11,9 @@ namespace Ohrizon.ControlWear.Network
     public class TcpListener : IListener
     {
         public event Action<string> MessageReceived;
-        
+        public event Action<string> ClientConnected;
+        public event Action<string> ClientDisconnected;
+
         private Thread _listenerThread;
         private bool _isListening;
         private System.Net.Sockets.TcpListener _listener = null;
@@ -62,21 +64,21 @@ namespace Ohrizon.ControlWear.Network
                 var msg = new byte[2048];
                 while (true)
                 {
-                    Debug.Log("Waiting for TCP connection");
                     using var client = _listener.AcceptTcpClient();
                     if (!_isListening)
                         return;
+                    
+                    InvokeOnAppThread(() => ClientConnected?.Invoke(client.ToString()), false);
+                    
                     var stream = client.GetStream();
                     string data = null;
                     int i;
                     while ((i = stream.Read(msg, 0, msg.Length)) != 0)
                         data += Encoding.ASCII.GetString(msg, 0, i);
-                    Debug.Log("Data received: " + data);
-
-                    if (MessageReceived != null)
-                    {
-                        InvokeOnAppThread(() => MessageReceived(data), false);
-                    }
+                    
+                    InvokeOnAppThread(() => ClientDisconnected?.Invoke(client.ToString()), false);
+                    
+                    InvokeOnAppThread(() => MessageReceived?.Invoke(data), false);
                 }
             }
             catch (SocketException e) when (e.SocketErrorCode == SocketError.Interrupted)
@@ -84,10 +86,6 @@ namespace Ohrizon.ControlWear.Network
                 Debug.Log("Listening canceled");
                 _isListening = false;
             }
-            // catch (SocketException e)
-            // {
-            //     Debug.LogError(e.Message);
-            // }
         }
 
         public void Cancel()

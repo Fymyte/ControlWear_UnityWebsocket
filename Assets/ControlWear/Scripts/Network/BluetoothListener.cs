@@ -1,10 +1,15 @@
 using System;
 using System.Threading;
+using System.Threading.Tasks;
 using UnityEngine;
 using static UnityEngine.WSA.Application;
+using Application = UnityEngine.WSA.Application;
 #if ENABLE_WINMD_SUPPORT
+using System.Runtime.CompilerServices;
 using Windows.Devices.Bluetooth;
 using Windows.Devices.Bluetooth.Rfcomm;
+using Windows.Devices.Enumeration;
+using Windows.Security.ExchangeActiveSyncProvisioning;
 using Windows.Networking.Sockets;
 using Windows.Storage.Streams;
 #endif
@@ -14,7 +19,9 @@ namespace Ohrizon.ControlWear.Network
     public class BluetoothListener : IListener
     {
         public event Action<string> MessageReceived;
-        
+        public event Action<string> ClientConnected;
+        public event Action<string> ClientDisconnected;
+
 #if ENABLE_WINMD_SUPPORT
         private static readonly Guid RfcommListenerServiceUuid = Guid.Parse("5ab3b0a3-338b-4b1b-8301-fed74b25d214");
         private const byte SdpServiceNameAttributeType = (4 << 3) | 5;
@@ -22,17 +29,20 @@ namespace Ohrizon.ControlWear.Network
         private const ushort SdpServiceNameAttributeId = 0x100;
 
         private Thread _listenerThread;
+        private bool _isBluetoothDiscoverable;
         private bool _isListening;
         private StreamSocket _socket;
         private DataWriter _writer;
         private RfcommServiceProvider _rfcommProvider;
         private StreamSocketListener _socketListener;
+        private string remoteDeviceName;
 #endif
 
         public BluetoothListener()
         {
 #if ENABLE_WINMD_SUPPORT
-            this._isListening = false;
+            _isBluetoothDiscoverable = false;
+            _isListening = false;
 #endif
         }
 
@@ -70,75 +80,32 @@ namespace Ohrizon.ControlWear.Network
 #if ENABLE_WINMD_SUPPORT
         private async void ListenForIncomingRequests()
         {
-            Debug.Log("listening for bluetooth connection...");
-            try
-            {
-                _rfcommProvider = await RfcommServiceProvider.CreateAsync(RfcommServiceId.FromUuid(RfcommListenerServiceUuid));
-            }
-            catch (Exception ex) when ((uint)ex.HResult == 0x800710DF)
-            {
-                Debug.Log("Make sure your Bluetooth Radio is on: " + ex.Message);
-                return;
-            }
-
-            // Create a listener for this service and start listening
-            _socketListener = new StreamSocketListener();
-            _socketListener.ConnectionReceived += OnConnectionReceived;
-            var rfcomm = _rfcommProvider.ServiceId.AsString(); 
-
-            await _socketListener.BindServiceNameAsync(_rfcommProvider.ServiceId.AsString(),
-                SocketProtectionLevel.BluetoothEncryptionAllowNullAuthentication);
-
-            // Set the SDP attributes and start Bluetooth advertising
-            InitializeServiceSdpAttributes(_rfcommProvider);
-
-            try
-            {
-                _rfcommProvider.StartAdvertising(_socketListener, true);
-            }
-            catch (Exception e)
-            {
-                // If you aren't able to get a reference to an RfcommServiceProvider, tell the user why.  Usually throws an exception if user changed their privacy settings to prevent Sync w/ Devices.  
-                Debug.Log(e.Message);
-                return;
-            }
-            
+            await RegisterForInboundPairingRequest(); 
+            var deviceInfo = new EasClientDeviceInformation();
+            Debug.Log($"Listening for bluetooth connection as {deviceInfo.FriendlyName}...");
             _isListening = true;
         }
         
-        private static void InitializeServiceSdpAttributes(RfcommServiceProvider rfcommProvider)
-        {
-            var sdpWriter = new DataWriter();
-
-            // Write the Service Name Attribute.
-            sdpWriter.WriteByte(SdpServiceNameAttributeType);
-
-            // The length of the UTF-8 encoded Service Name SDP Attribute.
-            sdpWriter.WriteByte((byte)SdpServiceName.Length);
-
-            // The UTF-8 encoded Service Name value.
-            sdpWriter.UnicodeEncoding = Windows.Storage.Streams.UnicodeEncoding.Utf8;
-            sdpWriter.WriteString(SdpServiceName);
-
-            // Set the SDP Attribute on the RFCOMM Service Provider.
-            rfcommProvider.SdpRawAttributes.Add(SdpServiceNameAttributeId, sdpWriter.DetachBuffer());
-        }
 
         private async void OnConnectionReceived(
             StreamSocketListener sender, StreamSocketListenerConnectionReceivedEventArgs args)
         {
+            Debug.Log("Connection received!");
             _socketListener.Dispose();
             _socketListener = null;
+            _isBluetoothDiscoverable = false; 
 
             _socket = args.Socket;
 
             var remoteDevice = await BluetoothDevice.FromHostNameAsync(_socket.Information.RemoteHostName);
+            remoteDeviceName = remoteDevice.Name;
 
             _writer = new DataWriter(_socket.OutputStream) { UnicodeEncoding = UnicodeEncoding.Utf8 };
             var reader = new DataReader(_socket.InputStream) { UnicodeEncoding = UnicodeEncoding.Utf8 };
             var remoteDisconnection = false;
 
-            Debug.Log("Connected to Client: " + remoteDevice.Name);
+            InvokeOnAppThread(() => { ClientConnected?.Invoke(remoteDeviceName); }, false);
+            Debug.Log("Connected to client: " + remoteDevice.Name);
 
             while (true)
             {
@@ -165,13 +132,7 @@ namespace Ohrizon.ControlWear.Network
                     }
                     var message = reader.ReadString(currentLength);
 
-                    if (MessageReceived != null)
-                    {
-                        InvokeOnAppThread(() => MessageReceived(message), false);
-                    }
-
-                    Debug.Log("Received: " + message);
-                }
+                    InvokeOnAppThread(() => { MessageReceived?.Invoke(message); }, false); }
                 catch (Exception ex) when ((uint)ex.HResult == 0x800703E3)
                 {
                     Debug.Log("Client disconnected successfully!");
@@ -181,11 +142,9 @@ namespace Ohrizon.ControlWear.Network
 
             reader.DetachStream();
 
-            if (remoteDisconnection)
-            {
-                Disconnect();
-                Debug.Log("Client disconnected");
-            }
+            if (!remoteDisconnection) return;
+            
+            Disconnect();
         }
 
         private void Disconnect()
@@ -215,9 +174,86 @@ namespace Ohrizon.ControlWear.Network
                 _socket = null;
             }
 
-            Debug.Log("Disconnected!");
+            InvokeOnAppThread(() => ClientDisconnected?.Invoke(remoteDeviceName), false);
         }
 
+        private async Task RegisterForInboundPairingRequest()
+        {
+            // Make the system discoverable for bluetooth
+            await MakeDiscoverable();
+            // If the attempt to make the system discoverable failed then likely there is no Bluetooth device present
+            // so leave the diagnostic message put out by the call to MakeDiscoverable()
+            if (!_isBluetoothDiscoverable)
+                return;
+            
+            var ceremoniesSelected = GetSelectedCeremonies();
+            var iCurrentSelectedCeremonies = (int)ceremoniesSelected;
+
+            // if (!DeviceInformationPairing.TryRegisterForAllInboundPairingRequests(ceremoniesSelected))
+            //     Debug.LogError("Unable to register for selected pairing kind");
+            
+            // TODO: Bind to windows "OnActivated" function with ActivationKind "DevicePairing" to properly handle connection     
+        }
+        
+        private static DevicePairingKinds GetSelectedCeremonies()
+        {
+            return DevicePairingKinds.ConfirmOnly
+                   // | DevicePairingKinds.DisplayPin
+                   // | DevicePairingKinds.ProvidePin
+                   | DevicePairingKinds.ConfirmPinMatch;
+        }
+
+        private async Task MakeDiscoverable()
+        {
+            // Don't repeatedly do this or the StartAdvertising will throw "cannot create a file when that file already exists"
+            if (_isBluetoothDiscoverable)
+                return;
+            
+            try
+            {
+                _rfcommProvider = await RfcommServiceProvider.CreateAsync(RfcommServiceId.FromUuid(RfcommListenerServiceUuid));
+
+                // Create a listener for this service and start listening
+                _socketListener = new StreamSocketListener();
+                _socketListener.ConnectionReceived += OnConnectionReceived;
+
+                await _socketListener.BindServiceNameAsync(_rfcommProvider.ServiceId.AsString(),
+                    SocketProtectionLevel.BluetoothEncryptionAllowNullAuthentication);
+                // Set the SDP attributes and start Bluetooth advertising
+                InitializeServiceSdpAttributes(_rfcommProvider);
+                _rfcommProvider.StartAdvertising(_socketListener, true);
+                _isBluetoothDiscoverable = true;
+            }
+            catch (Exception ex) when ((uint)ex.HResult == 0x800710DF)
+            {
+                Debug.Log("Make sure your Bluetooth Radio is on: " + ex.Message);
+                return;
+            }
+            catch (Exception e)
+            {
+                // If you aren't able to get a reference to an RfcommServiceProvider, tell the user why.  Usually throws an exception if user changed their privacy settings to prevent Sync w/ Devices.  
+                Debug.Log(e.Message);
+                return;
+            }
+        }
+        
+        private static void InitializeServiceSdpAttributes(RfcommServiceProvider rfcommProvider)
+        {
+            var sdpWriter = new DataWriter();
+
+            // Write the Service Name Attribute.
+            sdpWriter.WriteByte(SdpServiceNameAttributeType);
+
+            // The length of the UTF-8 encoded Service Name SDP Attribute.
+            sdpWriter.WriteByte((byte)SdpServiceName.Length);
+
+            // The UTF-8 encoded Service Name value.
+            sdpWriter.UnicodeEncoding = Windows.Storage.Streams.UnicodeEncoding.Utf8;
+            sdpWriter.WriteString(SdpServiceName);
+
+            // Set the SDP Attribute on the RFCOMM Service Provider.
+            rfcommProvider.SdpRawAttributes.Add(SdpServiceNameAttributeId, sdpWriter.DetachBuffer());
+        }
 
 #endif
     }

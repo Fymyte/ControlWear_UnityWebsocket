@@ -79,20 +79,20 @@ namespace Ohrizon.ControlWear.DollarQ
         /// <param name="candidate"></param>
         /// <param name="templateSet"></param>
         /// <returns></returns>
-        public static string Classify(Gesture candidate, Gesture[] templateSet)
+        public static Tuple<Gesture,float> Classify(Gesture candidate, Gesture[] templateSet)
         {
             float minDistance = float.MaxValue;
-            string gestureClass = "";
+            Gesture gesture = null;
             foreach (Gesture template in templateSet)
             {
                 float dist = GreedyCloudMatch(candidate, template, minDistance);
                 if (dist < minDistance)
                 {
                     minDistance = dist;
-                    gestureClass = template.Name;
+                    gesture = template;
                 }
             }
-            return gestureClass;
+            return Tuple.Create(gesture, minDistance); 
         }
 
         /// <summary>
