@@ -46,24 +46,24 @@ public class ConnectionManager : MonoBehaviour
     private void Start()
     {
         _actionManager = new ActionManager();
-        _tcpListener = new TcpListener("54321");
-        // _bluetoothListener = new BluetoothListener();
-        // _tcpListener.MessageReceived += OnMessageReceived;
-        _tcpListener.MessageReceived += OnMessageReceived;
-        _tcpListener.ClientDisconnected += OnClientDisconnected;
-        _tcpListener.ClientConnected += OnClientConnected;
+        // _tcpListener = new TcpListener("54321");
+        _bluetoothListener = new BluetoothListener();
+        
+        _bluetoothListener.MessageReceived += OnMessageReceived;
+        _bluetoothListener.ClientDisconnected += OnClientDisconnected;
+        _bluetoothListener.ClientConnected += OnClientConnected;
 
-        _actionManager.SingleTap += OnSingleTap;
+        _actionManager.SingleTap += () => Debug.Log("Single Tap");
         _actionManager.PointerRelease += OnPointerRelease;
         _actionManager.DoubleTap += () => Debug.Log("Double Tap");
         _actionManager.LongTap += () => Debug.Log("Long Tap");
-        // _tcpListener.Listen();
-        _tcpListener.Listen();
-    }
-
-    private void OnSingleTap()
-    {
-        Debug.Log($"On Single Tap");
+        _actionManager.PointerDown += (x, y) => Debug.Log($"Pointer Down ({x}, {y})");
+        _actionManager.PointerUp += (x, y) => Debug.Log($"Pointer Up ({x}, {y})");
+        _actionManager.PointerMove += (x, y) => Debug.Log($"Pointer Move ({x}, {y})");
+        _actionManager.PointerUpdate += (x, y) => Debug.Log($"Pointer Update ({x}, {y})");
+        _actionManager.Scroll += delta => Debug.Log($"Scroll ({delta})");
+        
+        _bluetoothListener.Listen();
     }
 
     private void OnPointerRelease(List<Point> points)
@@ -74,13 +74,14 @@ public class ConnectionManager : MonoBehaviour
 
     private void OnClientDisconnected(string device)
     {
-        // Debug.Log($"Client {device} disconnected");
-        // _bluetoothListener.Listen();
+        Debug.Log($"Client {device} disconnected");
+        _bluetoothListener.Listen();
+        // _tcpListener.Listen();
     }
 
     private void OnClientConnected(string device)
     {
-        // Debug.Log($"Client {device} connected");
+        Debug.Log($"Client {device} connected");
     }
 
     private void OnMessageReceived(string message)
@@ -92,6 +93,7 @@ public class ConnectionManager : MonoBehaviour
         // Debug.Log($"json: {_wrapperPoint.points}");
         // var recognized = QRecognizer.Classify(new Gesture(_wrapperPoint.points), _gestures.ToArray());
         // Debug.Log($"Recognized class: {recognized.Item1.Name} ({recognized.Item2})");
-        _actionManager.Feed(message); 
+        // _actionManager.Feed(message); 
+        Debug.Log("Message received: " + message);
     }
 }

@@ -105,7 +105,6 @@ namespace Ohrizon.ControlWear.Network
             var remoteDisconnection = false;
 
             InvokeOnAppThread(() => { ClientConnected?.Invoke(remoteDeviceName); }, false);
-            Debug.Log("Connected to client: " + remoteDevice.Name);
 
             while (true)
             {
@@ -115,27 +114,25 @@ namespace Ohrizon.ControlWear.Network
                     if (readLength < sizeof(uint))
                     {
                         remoteDisconnection = true;
-                        Debug.LogError("Failed to read message length");
                         break;
                     }
-                    var currentLength = reader.ReadUInt32();
+                    var currentLength = reader.ReadInt32();
                     
                     // Load the rest of the message since you already know the length of the data expected.  
-                    readLength = await reader.LoadAsync(currentLength);
+                    readLength = await reader.LoadAsync((uint)currentLength);
                     
                     // Check if the size of the data is expected (otherwise the remote has already terminated the connection)
                     if (readLength < currentLength)
                     {
                         remoteDisconnection = true;
-                        Debug.LogError("Failed to read message");
+                        Debug.LogError("Failed to read message (read length: " + readLength + ")");
                         break;
                     }
-                    var message = reader.ReadString(currentLength);
+                    var message = reader.ReadString((uint)currentLength);
 
                     InvokeOnAppThread(() => { MessageReceived?.Invoke(message); }, false); }
                 catch (Exception ex) when ((uint)ex.HResult == 0x800703E3)
                 {
-                    Debug.Log("Client disconnected successfully!");
                     break;
                 }
             }

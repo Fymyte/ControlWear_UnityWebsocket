@@ -1,8 +1,10 @@
 using System;
+using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
 using System.Threading;
+using System.Threading.Tasks;
 using UnityEngine;
 using static UnityEngine.WSA.Application;
 
@@ -18,6 +20,7 @@ namespace Ohrizon.ControlWear.Network
         private bool _isListening;
         private System.Net.Sockets.TcpListener _listener = null;
         private readonly string _port;
+        private string _clientName = null;
 
         public TcpListener(string port)
         {
@@ -35,7 +38,7 @@ namespace Ohrizon.ControlWear.Network
                 _listener = new System.Net.Sockets.TcpListener(IPAddress.Any, int.Parse(_port));
                 _listener.Start();
                 _isListening = true;
-                Debug.Log("Starting listening for TCP connection");
+                Debug.Log($"Starting listening for TCP connection on port {_port}");
             }
             catch (SocketException e)
             {
@@ -57,45 +60,93 @@ namespace Ohrizon.ControlWear.Network
 
         }
 
-        private void ListenForIncomingRequests()
+        private async void ListenForIncomingRequests()
         {
+            TcpClient client;
             try
             {
-                var msg = new byte[2048];
+                client = await _listener.AcceptTcpClientAsync();
+                if (!_isListening) return;
+            }
+            catch (SocketException e)
+            {
+                Debug.Log("Failed to accept client: " + e.Message);
+                return;
+            }
+
+            bool remoteDisconnection = false;
+            using (client)
+            {
+                _clientName = client.Client.RemoteEndPoint.ToString(); 
+                InvokeOnAppThread(() => ClientConnected?.Invoke(_clientName), false);
+                var stream = client.GetStream();
+                
                 while (true)
                 {
-                    using var client = _listener.AcceptTcpClient();
-                    if (!_isListening)
-                        return;
-                    
-                    InvokeOnAppThread(() => ClientConnected?.Invoke(client.ToString()), false);
-                    
-                    var stream = client.GetStream();
-                    string data = null;
-                    int i;
-                    while ((i = stream.Read(msg, 0, msg.Length)) != 0)
-                        data += Encoding.ASCII.GetString(msg, 0, i);
-                    
-                    InvokeOnAppThread(() => ClientDisconnected?.Invoke(client.ToString()), false);
-                    
-                    InvokeOnAppThread(() => MessageReceived?.Invoke(data), false);
+                    if (!_isListening) break;
+                    try
+                    {
+                        var msg = new byte[sizeof(uint)];
+                        var readLength = stream.Read(msg, 0, sizeof(uint));
+                        if (readLength < sizeof(uint))
+                        {
+                            remoteDisconnection = true;
+                            break;
+                        }
+
+                        if (BitConverter.IsLittleEndian)
+                            Array.Reverse(msg);
+                        var currentLength = BitConverter.ToInt32(msg, 0);
+                        Debug.Log("Message length: " + currentLength);
+                        msg = new byte[currentLength];
+                        var message = "";
+                        readLength = 0;
+                        int i;
+                        do
+                        {
+                            i = stream.Read(msg, 0, currentLength - readLength);
+                            readLength += i;
+                            message += Encoding.UTF8.GetString(msg, 0, i);
+                        } while (i != 0 && readLength < currentLength);
+                            
+                        if (readLength < currentLength)
+                        {
+                            remoteDisconnection = true;
+                            Debug.LogError("Failed to read message (read length: " + readLength + ")");
+                            break;
+                        }
+
+                        InvokeOnAppThread(() => MessageReceived?.Invoke(message), false);
+                    }
+                    catch (SocketException e) when (e.SocketErrorCode == SocketError.Interrupted)
+                    {
+                        InvokeOnAppThread(() => ClientDisconnected?.Invoke(_clientName??"None"), false);
+                        Debug.Log("Listening canceled");
+                        _isListening = false;
+                    }
                 }
+                
             }
-            catch (SocketException e) when (e.SocketErrorCode == SocketError.Interrupted)
+
+            if (!remoteDisconnection) return;
+            Disconnect();
+        }
+
+        private void Disconnect()
+        {
+            _isListening = false;
+            if (_listener != null)
             {
-                Debug.Log("Listening canceled");
-                _isListening = false;
+                _listener.Stop();
+                _listener = null;
             }
+            InvokeOnAppThread(() => ClientDisconnected?.Invoke(_clientName), false);
         }
 
         public void Cancel()
         {
-            if (!_isListening)
-                return;
-            
-            Debug.Log("TCP listening canceled");
-            _isListening = false;
-            _listener.Stop();
+            if (_isListening)
+                Disconnect();
         }
     }
 }
