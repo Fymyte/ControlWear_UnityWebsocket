@@ -104,13 +104,7 @@ namespace Ohrizon.ControlWear.Network
                         if (BitConverter.IsLittleEndian)
                             Array.Reverse(msg);
                         var currentLength = BitConverter.ToInt32(msg, 0);
-                        Debug.Log("message length: " + currentLength);
                         // A message with more than 100.000 character is probably an error
-                        if (currentLength > 100000)
-                        {
-                            Debug.LogError("Message length too high, skipping");
-                            continue;
-                        }
                         msg = new byte[currentLength];
                         var message = "";
                         readLength = 0;

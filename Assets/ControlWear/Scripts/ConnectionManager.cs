@@ -26,14 +26,26 @@ public class ConnectionManager : MonoBehaviour
         _bluetoothListener.ClientConnected += OnClientConnected;
 
         _gestureManager.SingleTap += () => Debug.Log("Single Tap");
-        _gestureManager.PointerRelease += OnPointerRelease;
+        // _gestureManager.PointerRelease += OnPointerRelease;
         _gestureManager.DoubleTap += () => Debug.Log("Double Tap");
         _gestureManager.LongTap += () => Debug.Log("Long Tap");
-        _gestureManager.PointerDown += (x, y) => Debug.Log($"Pointer Down ({x}, {y})");
-        _gestureManager.PointerUp += (x, y) => Debug.Log($"Pointer Up ({x}, {y})");
-        _gestureManager.PointerMove += (x, y) => Debug.Log($"Pointer Move ({x}, {y})");
-        _gestureManager.PointerUpdate += (x, y) => Debug.Log($"Pointer Update ({x}, {y})");
+        // _gestureManager.PointerDown += (x, y) => Debug.Log($"Pointer Down ({x}, {y})");
+        // _gestureManager.PointerUp += (x, y) => Debug.Log($"Pointer Up ({x}, {y})");
+        // _gestureManager.PointerMove += (x, y) => Debug.Log($"Pointer Move ({x}, {y})");
+        // _gestureManager.PointerUpdate += (x, y) => Debug.Log($"Pointer Update ({x}, {y})");
         _gestureManager.Scroll += delta => Debug.Log($"Scroll ({delta})");
+        void OnBack() => Debug.Log("OnBack");
+        void OnForward() => Debug.Log("OnForward");
+        void OnUp() => Debug.Log("OnUp");
+        void OnDown() => Debug.Log("OnDown");
+        _gestureManager.ArrowDown += OnDown;
+        _gestureManager.VerticalUp += OnDown;
+        _gestureManager.ArrowUp += OnUp;
+        _gestureManager.VerticalDown += OnUp;
+        _gestureManager.ArrowLeft += OnBack;
+        _gestureManager.HorizontalRight += OnBack;
+        _gestureManager.ArrowRight += OnForward;
+        _gestureManager.HorizontalLeft += OnForward;
         
         // _tcpListener.Listen();
         _bluetoothListener.Listen();
