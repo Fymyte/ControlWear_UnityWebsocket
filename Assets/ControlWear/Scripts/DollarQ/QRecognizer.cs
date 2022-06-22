@@ -66,6 +66,11 @@ namespace Ohrizon.ControlWear.DollarQ
     /// </summary>
     public class QRecognizer
     {
+        public class ClassifyResult
+        {
+            public Gesture Gesture;
+            public float Distance;
+        }
         // $Q's two major optimization layers (Early Abandoning and Lower Bounding)
         // can be activated / deactivated as desired
         public static bool UseEarlyAbandoning = true;
@@ -79,7 +84,7 @@ namespace Ohrizon.ControlWear.DollarQ
         /// <param name="candidate"></param>
         /// <param name="templateSet"></param>
         /// <returns></returns>
-        public static Tuple<Gesture,float> Classify(Gesture candidate, Gesture[] templateSet)
+        public static ClassifyResult Classify(Gesture candidate, Gesture[] templateSet)
         {
             float minDistance = float.MaxValue;
             Gesture gesture = null;
@@ -92,7 +97,7 @@ namespace Ohrizon.ControlWear.DollarQ
                     gesture = template;
                 }
             }
-            return Tuple.Create(gesture, minDistance); 
+            return new ClassifyResult() { Distance = minDistance, Gesture = gesture }; 
         }
 
         /// <summary>

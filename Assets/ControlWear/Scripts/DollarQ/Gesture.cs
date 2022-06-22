@@ -58,6 +58,7 @@
  * SUCH DAMAGE.
 **/
 using System;
+using UnityEngine;
 
 namespace Ohrizon.ControlWear.DollarQ
 {
@@ -66,7 +67,8 @@ namespace Ohrizon.ControlWear.DollarQ
     /// For $P, gestures are normalized with respect to scale, translated to origin, and resampled into a fixed number of 32 points.
     /// For $Q, a LUT is also computed.
     /// </summary>
-    public class Gesture
+    [Serializable]
+    public class Gesture: ISerializationCallbackReceiver
     {
         public Point[] Points = null;            // gesture points (normalized)
         public Point[] PointsRaw = null;         // gesture points (not normalized, as captured from the input device)
@@ -272,6 +274,19 @@ namespace Ohrizon.ControlWear.DollarQ
                 }
         }
 
+        #endregion
+
+        #region Serialization
+        // Only here for 'OnAfterDeserialize'
+        public void OnBeforeSerialize()
+        {
+        }
+
+        public void OnAfterDeserialize()
+        {
+            // Constructor is not called when deserializing, but we still need a serialized version of PointsRaw
+            Normalize();
+        }
         #endregion
     }
 }

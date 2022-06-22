@@ -1,10 +1,8 @@
 using System;
-using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
 using System.Threading;
-using System.Threading.Tasks;
 using UnityEngine;
 using static UnityEngine.WSA.Application;
 
@@ -12,15 +10,24 @@ namespace Ohrizon.ControlWear.Network
 {
     public class TcpListener : IListener
     {
+        #region Events
+
         public event Action<string> MessageReceived;
         public event Action<string> ClientConnected;
         public event Action<string> ClientDisconnected;
 
+
+        #endregion
+        
+        #region Private attributes
+        
         private Thread _listenerThread;
         private bool _isListening;
-        private System.Net.Sockets.TcpListener _listener = null;
+        private System.Net.Sockets.TcpListener _listener;
         private readonly string _port;
-        private string _clientName = null;
+        private string _clientName;
+        
+        #endregion
 
         public TcpListener(string port)
         {
@@ -86,9 +93,9 @@ namespace Ohrizon.ControlWear.Network
                     if (!_isListening) break;
                     try
                     {
-                        var msg = new byte[sizeof(uint)];
-                        var readLength = stream.Read(msg, 0, sizeof(uint));
-                        if (readLength < sizeof(uint))
+                        var msg = new byte[sizeof(int)];
+                        var readLength = stream.Read(msg, 0, sizeof(int));
+                        if (readLength < sizeof(int))
                         {
                             remoteDisconnection = true;
                             break;
@@ -97,7 +104,13 @@ namespace Ohrizon.ControlWear.Network
                         if (BitConverter.IsLittleEndian)
                             Array.Reverse(msg);
                         var currentLength = BitConverter.ToInt32(msg, 0);
-                        Debug.Log("Message length: " + currentLength);
+                        Debug.Log("message length: " + currentLength);
+                        // A message with more than 100.000 character is probably an error
+                        if (currentLength > 100000)
+                        {
+                            Debug.LogError("Message length too high, skipping");
+                            continue;
+                        }
                         msg = new byte[currentLength];
                         var message = "";
                         readLength = 0;
