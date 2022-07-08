@@ -1,8 +1,10 @@
 using System;
+using System.Collections;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
 using System.Threading;
+using ControlWear;
 using UnityEngine;
 using static UnityEngine.WSA.Application;
 
@@ -90,7 +92,12 @@ namespace Ohrizon.ControlWear.Network
                 
                 while (true)
                 {
-                    if (!_isListening) break;
+                    if (!_isListening)
+                    {
+                        remoteDisconnection = true;
+                        break;
+                    }
+
                     try
                     {
                         var msg = new byte[sizeof(int)];
@@ -104,16 +111,15 @@ namespace Ohrizon.ControlWear.Network
                         if (BitConverter.IsLittleEndian)
                             Array.Reverse(msg);
                         var currentLength = BitConverter.ToInt32(msg, 0);
-                        // A message with more than 100.000 character is probably an error
                         msg = new byte[currentLength];
-                        var message = "";
+                        var message = new StringBuilder(currentLength);
                         readLength = 0;
                         int i;
                         do
                         {
                             i = stream.Read(msg, 0, currentLength - readLength);
                             readLength += i;
-                            message += Encoding.UTF8.GetString(msg, 0, i);
+                            message.Append(Encoding.UTF8.GetString(msg, 0, i));
                         } while (i != 0 && readLength < currentLength);
                             
                         if (readLength < currentLength)
@@ -122,8 +128,11 @@ namespace Ohrizon.ControlWear.Network
                             Debug.LogError("Failed to read message (read length: " + readLength + ")");
                             break;
                         }
-
-                        InvokeOnAppThread(() => MessageReceived?.Invoke(message), false);
+#if UNITY_EDITOR
+                        UnityMainThreadDispatcher.Instance().Enqueue(SendMessageOnTheMainThread(message.ToString()));
+#else
+                        InvokeOnAppThread(() => MessageReceived?.Invoke(message.ToString()), false);
+#endif
                     }
                     catch (SocketException e) when (e.SocketErrorCode == SocketError.Interrupted)
                     {
@@ -138,6 +147,14 @@ namespace Ohrizon.ControlWear.Network
             if (!remoteDisconnection) return;
             Disconnect();
         }
+        
+#if UNITY_EDITOR
+        private IEnumerator SendMessageOnTheMainThread(string message)
+        {
+            MessageReceived?.Invoke(message);
+            yield return null;
+        }
+#endif
 
         private void Disconnect()
         {

@@ -180,14 +180,12 @@ namespace Ohrizon.ControlWear.Gesture
                                 ArrowRight?.Invoke();
                                 break;
                             case LINE_HORIZONTAL:
-                                Debug.Log("Horizontal: " + JsonUtility.ToJson(points));
                                 if (points[0].X > points[points.Count - 1].X)
                                     HorizontalLeft?.Invoke(); 
                                 else
                                     HorizontalRight?.Invoke();
                                 break;
                             case LINE_VERTICAL:
-                                Debug.Log("Vertical: " + JsonUtility.ToJson(points));
                                 if (points[0].Y > points[points.Count - 1].Y)
                                     VerticalUp?.Invoke();
                                 else
